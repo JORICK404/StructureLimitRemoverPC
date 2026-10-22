@@ -1,70 +1,49 @@
-# StructureLimitRemover (LeviLamina)
+# StructureLimitRemover
 
-Мод для [LeviLamina](https://github.com/LiteLDev/LeviLamina): порт
-[StructureLimitRemover](https://github.com/fangkuaichaoge/StructureLimitRemover) (Android) на
-**Minecraft Bedrock для Windows**.
+A [LeviLamina](https://github.com/LiteLDev/LeviLamina) mod for Minecraft Bedrock Edition (Windows)
+that removes the 64-block limit on structure width (X) and depth (Z).
 
-Снимает лимит 64 блока по X и Z для структур:
+Android version: [fangkuaichaoge/StructureLimitRemover](https://github.com/fangkuaichaoge/StructureLimitRemover).
 
-- поля размера в интерфейсе структурного блока (больше не обрезаются до 64);
-- серверная обработка данных структурного блока;
-- кнопка «Экспорт» в структурном блоке (проверка шаблона перед сохранением `.mcstructure`);
-- `/structure save`;
-- скриптовый `world.structureManager` (варианты с `BlockVolume` и `Vector3`).
+## Features
 
-Высота (Y) по-прежнему ограничена высотой измерения, как и в ванилле.
+The X and Z limit is removed in:
 
-## Установка
+- the structure block size fields
+- the structure block **Export** button
+- `/structure save`
+- the Script API `world.structureManager`
 
-1. Поставь клиентскую LeviLamina, например через [LeviLauncher](https://github.com/LiteLDev/LeviLauncher).
-2. Скопируй папку `bin/StructureLimitRemover/` (в ней `StructureLimitRemover.dll` и `manifest.json`)
-   в `mods/` рядом с игрой. Должно получиться `mods/StructureLimitRemover/manifest.json`.
-3. Запусти игру. В логе LeviLamina появится строка
-   `Structure size limit removed (N site(s) patched, ...)`.
+The height (Y) is still limited by the world height, same as vanilla.
 
-Выключение мода через LeviLamina (`disable`) возвращает исходные байты, и лимит снова начинает работать.
+## Supported versions
 
-## Сборка
+| Minecraft | LeviLamina |
+|---|---|
+| 1.26.51 | 26.51.x |
 
-Нужны [xmake](https://xmake.io), Visual Studio 2022 и LLVM (clang-cl) в `PATH`.
+## Installation
+
+1. Install LeviLamina for the client, for example with [LeviLauncher](https://github.com/LiteLDev/LeviLauncher).
+2. Download `StructureLimitRemover-x.x.x-client-windows-x64.zip` from
+   [Releases](../../releases) and import it in LeviLauncher as a mod.
+3. Start the game. The LeviLamina log should show
+   `Structure size limit removed (10 site(s) patched, 0 missing)`.
+
+## Notes
+
+- There is no upper limit anymore. Saving very large structures can freeze the game or run it out
+  of memory.
+- After a game update the mod may stop working. In that case the log will show missing sites; the
+  mod does not touch anything it can't find.
+
+## Building
+
+Requirements: [xmake](https://xmake.io), Visual Studio 2022, LLVM (clang-cl).
 
 ```bash
 xmake f -a x64 -m release -p windows --target_type=client -y
-```
-
-```bash
 xmake -y
 ```
 
-Готовый мод появится в `bin/StructureLimitRemover/`. Чтобы собрать под сервер (BDS), используй
-`--target_type=server`. Сигнатуры проверялись только на клиенте, поэтому на сервере часть мест
-может быть не найдена (это будет видно в логе).
-
-## Как это работает
-
-На Android лимит задаётся в одной маленькой функции-хелпере. В Windows-сборке её встроили
-(inline) во все места вызова, поэтому патчится каждое место отдельно. Все сравнения в x64 там
-используют 8-битную константу (`cmp r32, 0x40`), а в неё 999 не помещается. Поэтому мод
-не поднимает лимит до 999, а выключает проверки:
-
-| Место | Было | Стало |
-|---|---|---|
-| `/structure` (X, Z) | `cmp ecx,40h / ja tooBig` | `nop` |
-| скрипты, `BlockVolume` | `cmp r,3Fh / jg err` | `nop` |
-| скрипты, `Vector3` | `ucomiss x,64.0 / jbe ok` | `jmp ok` |
-| экспорт (X, Z) | `cmp [r13+30h],40h / jg fail` | `nop` |
-| кламп в UI и на сервере, X | `cmp r,40h / cmovge r,64` | `cmovo` (никогда не срабатывает) |
-| кламп в UI и на сервере, Z | `cmp r,40h / cmovl c,r` | `cmovno` (срабатывает всегда) |
-
-Каждое место ищется по сигнатуре в `.text` игры. Перед записью мод проверяет исходные байты,
-поэтому на незнакомой версии игры он ничего не сломает: такие места просто попадут в лог как
-`not found`.
-
-Проверено на Minecraft **1.26.51.01** (LeviLamina 26.51) и **1.26.52**: на обеих версиях
-находятся все 10 мест.
-
-## Осторожно
-
-- Верхнего предела по X/Z больше нет. Если сохранить структуру размером в тысячи блоков, игра
-  может надолго зависнуть или упасть из-за нехватки памяти.
-- После обновления игры сигнатуры могут перестать совпадать. Это будет видно в логе.
+The mod is placed in `bin/StructureLimitRemover/`.
