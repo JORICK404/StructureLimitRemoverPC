@@ -1,0 +1,11 @@
+# XMake
+/.xmake/
+/build/
+/bin/
+/CMakeLists.txt
+compile_commands.json
+
+/.vs/
+/.vscode/*
+!/.vscode/launch.json
+/.idea/
