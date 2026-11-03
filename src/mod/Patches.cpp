@@ -21,20 +21,19 @@
  *
  *   - "too big" branches (jcc)            -> NOP / unconditional jmp to "ok"
  *   - clamps   "cmp r,64 ; cmovge r,64"   -> cmovo   (never taken after cmp)
- *              "cmp r,64 ; cmovl  c,r"    -> cmovno  (always taken after cmp)
  *
  * The Y size is NOT touched: it is limited by the dimension height, which is
  * the same as vanilla.  The lower clamp (size >= 1) stays as well.
  *
- * Sites (Minecraft.Windows.exe 1.26.52, RVA):
- *   command       0xB5F37C2  /structure save        X/Z > 64 -> tooBig
- *   script_int    0xC3F3F74  script StructureManager (int BlockVolume)
- *   script_flt_x  0xC3F80F7  script StructureManager (float Vector3) X
- *   script_flt_z  0xC3F872F  script StructureManager (float Vector3) Z
- *   clamp_a       0x694AA19, 0x694B133  structure block screen size setter
- *   clamp_b       0x69503DD, 0x6950490  structure block screen size setter
- *   clamp_c       0x16EF0D2  server-side structure block data
- *   export        0x6F0D2F3  structure block "Export" template validation
+ * Sites (Minecraft.Windows.exe 1.26.60.05, RVA):
+ *   command       0xBE01018  /structure save        X/Z > 64 -> tooBig
+ *   script_int    0xB8579D6  script StructureManager (int BlockVolume)
+ *   script_flt_x  0xB85C878  script StructureManager (float Vector3) X
+ *   script_flt_z  0xB85CEA1  script StructureManager (float Vector3) Z
+ *   clamp_a..d    0x7124D36, 0x7125470, 0x712A7DF, 0x712A8BD
+ *                            structure block screen size setter
+ *   clamp_e       0x2292284  server-side structure block data
+ *   export        0x698B8A3  structure block "Export" template validation
  *
  * Every write is preceded by a check of the original bytes, so on an unknown
  * build nothing is ever written to a wrong place.
@@ -59,15 +58,15 @@ struct PatchSite {
 const std::vector<uint8_t> kNop6 = {0x66, 0x0F, 0x1F, 0x44, 0x00, 0x00};
 
 const PatchSite kSites[] = {
-    /* /structure save: cmp ecx,40h / ja tooBig ... cmp edx,41h / jae tooBig */
+    /* /structure save: cmp edx,40h / ja tooBig ... cmp r13d,41h / jae tooBig */
     {"command",
-     "83 F9 40 0F 87 ?? ?? ?? ?? 45 39 EF 0F 8F ?? ?? ?? ?? 83 FA 41 0F 83",
-     {{3, {0x0F, 0x87}, kNop6}, {21, {0x0F, 0x83}, kNop6}}},
+     "83 FA 40 0F 87 ?? ?? ?? ?? 44 39 F1 0F 8F ?? ?? ?? ?? 41 83 FD 41 0F 83",
+     {{3, {0x0F, 0x87}, kNop6}, {22, {0x0F, 0x83}, kNop6}}},
 
-    /* script API (BlockVolume): cmp r14d,3Fh / jg err ... cmp r13d,40h / jge err */
+    /* script API (BlockVolume): cmp r8d,3Fh / jg err ... cmp ebx,40h / jge err */
     {"script_int",
-     "41 83 FE 3F 0F 8F ?? ?? ?? ?? 41 39 D7 0F 8D ?? ?? ?? ?? 41 83 FD 40 0F 8D",
-     {{4, {0x0F, 0x8F}, kNop6}, {23, {0x0F, 0x8D}, kNop6}}},
+     "41 83 F8 3F 0F 8F ?? ?? ?? ?? 66 0F 70 C6 55 66 41 0F 7E C0 41 39 D0 0F 8D ?? ?? ?? ?? 83 FB 40 0F 8D",
+     {{4, {0x0F, 0x8F}, kNop6}, {32, {0x0F, 0x8D}, kNop6}}},
 
     /* script API (Vector3): ucomiss x,64.0 / jbe ok -> jmp ok */
     {"script_flt_x",
@@ -75,16 +74,29 @@ const PatchSite kSites[] = {
      {{7, {0x0F, 0x86}, {0x90, 0xE9}}}},
 
     /* script API (Vector3): ucomiss z,64.0 / jbe ok -> jmp ok */
-    {"script_flt_z", "F3 41 0F 10 46 08 41 B4 01 0F 2E 05 ?? ?? ?? ?? 0F 86", {{16, {0x0F, 0x86}, {0x90, 0xE9}}}},
+    {"script_flt_z", "F3 0F 10 43 08 41 B4 01 0F 2E 05 ?? ?? ?? ?? 0F 86", {{15, {0x0F, 0x86}, {0x90, 0xE9}}}},
 
-    /* structure block screen: clamp X (cmovge -> cmovo), Z (cmovl -> cmovno) */
+    /* structure block screen: clamp X and Z (cmovge -> cmovo). Since 1.26.60
+     * the lower clamp runs first, so Z is clamped with cmovge as well. */
     {"clamp_a",
-     "83 F9 40 41 B8 40 00 00 00 41 0F 4D C8 44 39 D0 41 0F 4D C2 8B 97 ?? ?? ?? ?? 83 FA 40 44 0F 4C C2",
-     {{11, {0x4D}, {0x40}}, {31, {0x4C}, {0x41}}}},
+     "83 F9 40 BA 40 00 00 00 0F 4D CA 83 F8 02 41 0F 4C C0 44 8B 8F ?? ?? ?? ?? 41 83 F9 02 45 0F 4D C1 41 83 F8 "
+     "40 44 0F 4D C2",
+     {{9, {0x4D}, {0x40}}, {39, {0x4D}, {0x40}}}},
 
     {"clamp_b",
-     "83 F9 40 BA 40 00 00 00 0F 4D CA 44 39 D0 41 0F 4D C2 44 8B 83 ?? ?? ?? ?? 41 83 F8 40 41 0F 4C D0",
-     {{9, {0x4D}, {0x40}}, {31, {0x4C}, {0x41}}}},
+     "83 F9 40 41 B9 40 00 00 00 41 0F 4D C9 83 F8 02 41 0F 4C C0 8B 97 ?? ?? ?? ?? 83 FA 02 44 0F 4D C2 48 8D 97 ?? "
+     "?? ?? ?? 41 83 F8 40 45 0F 4D C1",
+     {{11, {0x4D}, {0x40}}, {46, {0x4D}, {0x40}}}},
+
+    {"clamp_c",
+     "83 F9 40 41 B8 40 00 00 00 41 0F 4D C8 83 F8 02 0F 4C C2 44 8B 8B ?? ?? ?? ?? 41 83 F9 02 41 0F 4D D1 83 FA 40 "
+     "41 0F 4D D0",
+     {{11, {0x4D}, {0x40}}, {39, {0x4D}, {0x40}}}},
+
+    {"clamp_d",
+     "83 F9 40 BA 40 00 00 00 0F 4D CA 83 F8 02 0F 4C C7 44 8B 83 ?? ?? ?? ?? 41 83 F8 02 44 0F 4C C7 41 83 F8 40 44 "
+     "0F 4D C2",
+     {{9, {0x4D}, {0x40}}, {38, {0x4D}, {0x40}}}},
 
     /* structure block "Export": template validation before saving the
      * .mcstructure, cmp [r13+30h],40h / jg fail ... cmp [r13+38h],40h / jg fail */
@@ -93,9 +105,10 @@ const PatchSite kSites[] = {
      {{5, {0x7F}, {0x66, 0x90}}, {26, {0x7F}, {0x66, 0x90}}}},
 
     /* server-side structure block data (packet / block actor) */
-    {"clamp_c",
-     "41 83 FA 40 41 BB 40 00 00 00 45 0F 4D D3 41 39 F1 44 0F 4D CE 8B 75 ?? 83 FE 40 44 0F 4C DE",
-     {{12, {0x4D}, {0x40}}, {29, {0x4C}, {0x41}}}},
+    {"clamp_e",
+     "41 83 FA 40 BE 40 00 00 00 44 0F 4D D6 41 83 F9 02 45 0F 4C CB 44 8B 7D ?? 41 83 FF 02 45 0F 4D DF 41 83 FB 40 "
+     "44 0F 4D DE",
+     {{11, {0x4D}, {0x40}}, {39, {0x4D}, {0x40}}}},
 };
 
 struct Written {

@@ -20,7 +20,7 @@ The height (Y) is still limited by the world height, same as vanilla.
 
 | Minecraft | LeviLamina |
 |---|---|
-| 1.26.51 | 26.51.x |
+| 1.26.60 | 26.60.x |
 
 ## Installation
 
